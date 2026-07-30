@@ -445,7 +445,7 @@ struct Cli {
     #[arg(long, require_equals = true, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
     headless: bool,
 
-    /// Create a brand new provider session by opening a new tab and closing old ones.
+    /// Create a brand new provider session in a new tab while preserving existing tabs.
     #[arg(long, default_value_t = false)]
     new: bool,
 
@@ -724,6 +724,25 @@ struct Page {
     id: usize,
     url: String,
     selected: bool,
+}
+
+fn unique_new_page_id(before: &[Page], after: &[Page]) -> Result<usize, String> {
+    let new_page_ids: Vec<usize> = after
+        .iter()
+        .filter(|candidate| !before.iter().any(|page| page.id == candidate.id))
+        .map(|page| page.id)
+        .collect();
+
+    match new_page_ids.as_slice() {
+        [page_id] => Ok(*page_id),
+        [] => {
+            Err("Could not identify the newly opened tab; existing tabs were preserved".to_string())
+        }
+        _ => Err(format!(
+            "Could not uniquely identify the newly opened tab (new page IDs: {:?}); existing tabs were preserved",
+            new_page_ids
+        )),
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2830,6 +2849,88 @@ mod tests {
         ];
 
         assert_eq!(preferred_provider_page_id(&pages), Some(7));
+    }
+
+    #[test]
+    fn identifies_the_only_new_page_without_reusing_existing_provider_tabs() {
+        let before = [
+            Page {
+                id: 1,
+                url: "https://chatgpt.com/c/existing".to_string(),
+                selected: true,
+            },
+            Page {
+                id: 2,
+                url: "https://example.com/".to_string(),
+                selected: false,
+            },
+        ];
+        let after = [
+            Page {
+                id: 1,
+                url: "https://chatgpt.com/c/existing".to_string(),
+                selected: false,
+            },
+            Page {
+                id: 2,
+                url: "https://example.com/".to_string(),
+                selected: false,
+            },
+            Page {
+                id: 7,
+                url: "https://chatgpt.com/".to_string(),
+                selected: true,
+            },
+        ];
+
+        assert_eq!(unique_new_page_id(&before, &after), Ok(7));
+    }
+
+    #[test]
+    fn refuses_to_guess_when_new_page_identity_is_ambiguous() {
+        let before = [Page {
+            id: 1,
+            url: "https://chatgpt.com/c/existing".to_string(),
+            selected: true,
+        }];
+        let after = [
+            Page {
+                id: 1,
+                url: "https://chatgpt.com/c/existing".to_string(),
+                selected: false,
+            },
+            Page {
+                id: 7,
+                url: "https://chatgpt.com/".to_string(),
+                selected: true,
+            },
+            Page {
+                id: 8,
+                url: "https://example.com/popup".to_string(),
+                selected: false,
+            },
+        ];
+
+        let error = unique_new_page_id(&before, &after).unwrap_err();
+        assert!(error.contains("Could not uniquely identify"));
+        assert!(error.contains("[7, 8]"));
+    }
+
+    #[test]
+    fn refuses_to_reuse_an_existing_page_when_no_new_page_appears() {
+        let before = [Page {
+            id: 1,
+            url: "https://chatgpt.com/c/existing".to_string(),
+            selected: true,
+        }];
+        let after = [Page {
+            id: 1,
+            url: "https://chatgpt.com/c/existing".to_string(),
+            selected: true,
+        }];
+
+        let error = unique_new_page_id(&before, &after).unwrap_err();
+        assert!(error.contains("Could not identify the newly opened tab"));
     }
 
     #[test]
@@ -5009,13 +5110,9 @@ fn ensure_provider_tab(
 
     let pages = parse_pages(text);
 
-    if force_new {
-        let old_provider_ids: Vec<usize> = pages
-            .iter()
-            .filter(|p| provider.owns_url(&p.url))
-            .map(|p| p.id)
-            .collect();
+    let mut new_session_page_id = None;
 
+    if force_new {
         if verbose {
             println!("Opening a brand new {} session...", provider.display_name());
         }
@@ -5026,23 +5123,6 @@ fn ensure_provider_tab(
                 "url": provider.home_url()
             }),
         )?;
-
-        for id in old_provider_ids {
-            if verbose {
-                println!(
-                    "Closing old {} tab (ID: {})...",
-                    provider.display_name(),
-                    id
-                );
-            }
-            let _ = call_mcp_tool(
-                config_path,
-                "close_page",
-                serde_json::json!({
-                    "pageId": id
-                }),
-            );
-        }
 
         let refreshed_pages_res = call_mcp_tool(config_path, "list_pages", serde_json::json!({}))?;
         let refreshed_text = refreshed_pages_res
@@ -5058,37 +5138,24 @@ fn ensure_provider_tab(
                 )
             })?;
         let refreshed_pages = parse_pages(refreshed_text);
+        let new_page_id = unique_new_page_id(&pages, &refreshed_pages)?;
 
-        if let Some(page) = refreshed_pages.iter().find(|p| provider.owns_url(&p.url)) {
-            if verbose {
-                println!(
-                    "Selecting new {} tab (ID: {})...",
-                    provider.display_name(),
-                    page.id
-                );
-            }
-            call_mcp_tool(
-                config_path,
-                "select_page",
-                serde_json::json!({
-                    "pageId": page.id,
-                    "bringToFront": !headless
-                }),
-            )?;
-
-            for stale_page in refreshed_pages.iter().filter(|p| p.id != page.id) {
-                if verbose {
-                    println!("Closing non-selected tab (ID: {})...", stale_page.id);
-                }
-                let _ = call_mcp_tool(
-                    config_path,
-                    "close_page",
-                    serde_json::json!({
-                        "pageId": stale_page.id
-                    }),
-                );
-            }
+        if verbose {
+            println!(
+                "Selecting new {} tab (ID: {}) while preserving existing tabs...",
+                provider.display_name(),
+                new_page_id
+            );
         }
+        call_mcp_tool(
+            config_path,
+            "select_page",
+            serde_json::json!({
+                "pageId": new_page_id,
+                "bringToFront": !headless
+            }),
+        )?;
+        new_session_page_id = Some(new_page_id);
     } else {
         let provider_pages: Vec<&Page> = pages
             .iter()
@@ -5184,10 +5251,48 @@ fn ensure_provider_tab(
     }
     for attempt in 0..90 {
         if attempt > 0 && attempt % 10 == 0 {
+            if let Some(page_id) = new_session_page_id {
+                let current_pages_res =
+                    call_mcp_tool(config_path, "list_pages", serde_json::json!({}))?;
+                let current_pages_text = current_pages_res
+                    .get("content")
+                    .and_then(|content| content.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("text"))
+                    .and_then(|text| text.as_str())
+                    .ok_or_else(|| {
+                        format!(
+                            "Invalid list_pages response while verifying new tab: {:?}",
+                            current_pages_res
+                        )
+                    })?;
+                let page = parse_pages(current_pages_text)
+                    .into_iter()
+                    .find(|page| page.id == page_id)
+                    .ok_or_else(|| {
+                        format!(
+                            "New {} tab (ID: {}) disappeared; refusing to reuse an existing tab",
+                            provider.display_name(),
+                            page_id
+                        )
+                    })?;
+
+                call_mcp_tool(
+                    config_path,
+                    "select_page",
+                    serde_json::json!({
+                        "pageId": page.id,
+                        "bringToFront": !headless
+                    }),
+                )?;
+                continue;
+            }
+
             let page_opt = call_mcp_tool(config_path, "list_pages", serde_json::json!({}))
                 .ok()
-                .and_then(|res| {
-                    res.get("content")
+                .and_then(|response| {
+                    response
+                        .get("content")
                         .and_then(|c| c.as_array())
                         .and_then(|arr| arr.first())
                         .and_then(|obj| obj.get("text"))
@@ -5197,7 +5302,7 @@ fn ensure_provider_tab(
                 .and_then(|text| {
                     parse_pages(&text)
                         .into_iter()
-                        .find(|p| provider.owns_url(&p.url))
+                        .find(|page| provider.owns_url(&page.url))
                 });
             if let Some(page) = page_opt {
                 let _ = call_mcp_tool(
