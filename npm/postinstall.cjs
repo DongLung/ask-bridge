@@ -5,9 +5,12 @@ const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const {
   chmodSync,
+  closeSync,
   copyFileSync,
   existsSync,
   mkdirSync,
+  openSync,
+  readSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -72,6 +75,60 @@ function verifyChecksum(filePath, checksumText) {
   }
 }
 
+function verifyBinaryFormat(filePath, platform = process.platform) {
+  const header = Buffer.alloc(4);
+  const descriptor = openSync(filePath, 'r');
+  let bytesRead;
+  try {
+    bytesRead = readSync(descriptor, header, 0, header.length, 0);
+  } finally {
+    closeSync(descriptor);
+  }
+  const binaryHeader = header.subarray(0, bytesRead);
+  const magic = binaryHeader.toString('hex');
+  const supportedMagic = {
+    win32: ['4d5a'],
+    linux: ['7f454c46'],
+    darwin: [
+      'feedface',
+      'cefaedfe',
+      'feedfacf',
+      'cffaedfe',
+      'cafebabe',
+      'bebafeca',
+      'cafebabf',
+      'bfbafeca',
+    ],
+  };
+  const expected = supportedMagic[platform];
+  if (!expected) {
+    throw new Error(`Unsupported platform for binary verification: ${platform}`);
+  }
+  if (!expected.some((prefix) => magic.startsWith(prefix))) {
+    throw new Error(
+      `Downloaded binary format does not match ${platform} (header: ${magic || 'empty'})`,
+    );
+  }
+}
+
+function verifyInstalledBinary(filePath, platform = process.platform) {
+  verifyBinaryFormat(filePath, platform);
+  const result = spawnSync(filePath, ['--version'], { encoding: 'utf8' });
+  if (result.error) {
+    throw new Error(`Installed binary could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const detail = `${result.stdout || ''}${result.stderr || ''}`.trim();
+    throw new Error(
+      `Installed binary failed its version check with exit code ${result.status}${detail ? `: ${detail}` : ''}`,
+    );
+  }
+  const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+  if (!/^ask-bridge\s+\d+\.\d+\.\d+/.test(output)) {
+    throw new Error(`Installed binary returned unexpected version output: ${output || '(empty)'}`);
+  }
+}
+
 function download(url, destination, redirectsRemaining = 5) {
   return new Promise((resolve, reject) => {
     get(url, (res) => {
@@ -129,9 +186,11 @@ function findExtractedBinary(dir, binName = BIN_NAME) {
 function installFromLocalBuild() {
   const localRelease = join(PACKAGE_ROOT, 'target', 'release', BIN_NAME);
   if (!existsSync(localRelease)) return false;
+  verifyBinaryFormat(localRelease);
   mkdirSync(BIN_DIR, { recursive: true });
   copyFileSync(localRelease, DEST);
   chmodSync(DEST, 0o755);
+  verifyInstalledBinary(DEST);
   return true;
 }
 
@@ -151,9 +210,11 @@ async function installFromRelease() {
   extract(archivePath, tmpDir);
 
   const extracted = findExtractedBinary(tmpDir);
+  verifyBinaryFormat(extracted);
   mkdirSync(BIN_DIR, { recursive: true });
   copyFileSync(extracted, DEST);
   chmodSync(DEST, 0o755);
+  verifyInstalledBinary(DEST);
   rmSync(tmpDir, { recursive: true, force: true });
 }
 
@@ -195,5 +256,7 @@ module.exports = {
   platformKey,
   releaseBaseUrl,
   sha256,
+  verifyBinaryFormat,
   verifyChecksum,
+  verifyInstalledBinary,
 };
