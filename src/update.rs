@@ -117,10 +117,8 @@ fn is_process_running(pid: u32) -> bool {
             return false;
         }
         let pid_field = trimmed.split_whitespace().nth(1);
-        if let Some(pid_field) = pid_field {
-            if let Ok(value) = pid_field.parse::<u32>() {
-                return value == pid;
-            }
+        if let Some(value) = pid_field.and_then(|p| p.parse::<u32>().ok()) {
+            return value == pid;
         }
     }
 

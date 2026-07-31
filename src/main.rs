@@ -252,9 +252,10 @@ impl Provider {
                     const composer = document.querySelector('div[role="textbox"][aria-label*="Gemini"]') ||
                         document.querySelector('rich-textarea [contenteditable="true"]') ||
                         document.querySelector('.ql-editor[contenteditable="true"]');
-                    const account = document.querySelector('a[href*="accounts.google.com/SignOutOptions"]') ||
-                        document.querySelector('[aria-label*="Google 帳戶"]') ||
-                        document.querySelector('[aria-label*="Google Account"]');
+                    const accountEl = document.querySelector('a[href*="accounts.google.com/SignOutOptions"]') ||
+                        document.querySelector('a[aria-label*="Google 帳戶"]') ||
+                        document.querySelector('a[aria-label*="Google Account"]');
+                    const hasAccount = accountEl && (accountEl.href?.includes('SignOutOptions') || accountEl.closest('header') !== null);
                     const signIn = Array.from(document.querySelectorAll('a, button'))
                         .some((el) => isVisible(el) && /Sign in|登入/.test([
                                 el.getAttribute('aria-label'),
@@ -262,7 +263,7 @@ impl Provider {
                             ].filter(Boolean).join(' ')));
                     const authPath = /\/(auth|login|signin|signup)(\/|$)/i.test(window.location.pathname);
                     return {
-                        account: isVisible(account),
+                        account: Boolean(hasAccount),
                         auth_control: Boolean(signIn),
                         auth_path: authPath,
                         composer: Boolean(composer),
@@ -298,7 +299,8 @@ impl Provider {
                         account: isVisible(account),
                         auth_control: Boolean(signIn),
                         auth_path: authPath,
-                        composer: Boolean(composer)
+                        composer: Boolean(composer),
+                        stable: true
                     };
                 }"#
             }
@@ -3261,6 +3263,32 @@ mod tests {
         };
 
         assert_eq!(signals.state(Provider::Gemini), LoginState::Unknown);
+    }
+
+    #[test]
+    fn gemini_hidden_account_marker_is_logged_in() {
+        let signals = LoginSignals {
+            account: true, // script can detect marker even if hidden
+            auth_control: false,
+            auth_path: false,
+            composer: true,
+            stable: true,
+        };
+
+        assert_eq!(signals.state(Provider::Gemini), LoginState::LoggedIn);
+    }
+
+    #[test]
+    fn claude_composer_without_account_remains_unknown() {
+        let signals = LoginSignals {
+            account: false,
+            auth_control: false,
+            auth_path: false,
+            composer: true,
+            stable: true,
+        };
+
+        assert_eq!(signals.state(Provider::Claude), LoginState::Unknown);
     }
 
     #[test]
