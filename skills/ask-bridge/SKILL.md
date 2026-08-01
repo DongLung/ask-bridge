@@ -191,8 +191,6 @@ prompt + "\n\n" + stdin
 | `--model <MODEL>` | 送出 prompt 前切換模型 | 比對不分大小寫與標點；模型名稱取決於 provider UI 與帳號權限 |
 | `--reasoning <REASONING>` | 切換 provider 推理模式 | ChatGPT 支援 `auto`、`instant`、`medium`、`high`；Gemini 支援 `extended`；Claude 不支援 |
 | `-h`, `--help` | 顯示 help | 可用 `ask-bridge --help` 或 `ask-bridge help <COMMAND>` |
-| `config` | 設定或顯示全域預設 provider | 使用 `ask-bridge config --provider <chatgpt|gemini|claude>` |
-| `update` | 透過官方安裝指令重新安裝 | 只有使用者明確要求更新 ask-bridge 時才執行 |
 
 只有 `--provider` 是 global option，可放在子命令前後。其他頂層選項搭配子命令時必須放在子命令之前，例如 `ask-bridge --timeout 600 login`、`ask-bridge --output /tmp/reply.md get <url>`；不要寫成 `ask-bridge login --timeout 600` 或 `ask-bridge get <url> --output ...`。
 
@@ -337,6 +335,30 @@ ask-bridge --provider claude '用幾句話介紹 Rust。' --model Sonnet
 ChatGPT 的 `--reasoning` 支援 `auto`、`instant`、`medium`、`high` 與對應中文別名；Gemini 只支援 `extended`，且不能搭配非 Pro 模型；Claude 不支援 `--reasoning`。
 
 模型只比對 provider 選單的主標籤，忽略副標題與 badge，且不會把不存在的舊版本自動對應到其他版本。若切換失敗，應依錯誤列出的目前選項修正參數，不要猜測替代模型名稱。舊用法 `--model 高` 與 `--model 延伸思考` 暫時可用，但應改成 `--reasoning`。
+
+## ChatGPT Agent 提及語法
+
+使用 ChatGPT 時，prompt 可以採用 `@Agent名稱 prompt正文` 格式。符合格式時，`ask-bridge` 會先輸入 Agent mention、等待候選選單出現，再按 `Tab` 接受 UI 當下的預設選取項，最後輸入正文。此流程不會驗證候選是否與輸入的 Agent 名稱完全相符。
+
+### 語法與限制
+
+- **格式**：`@Agent名稱 prompt正文`
+- **名稱限制**：Agent 名稱必須由 1 至 10 個非空白字元組成。
+- **正文限制**：Agent 名稱後必須至少有一個空白，且去除前導空白後的正文不可為空。
+- **Provider 限制**：特殊處理只適用於 ChatGPT；Gemini 與 Claude 會將相同內容視為一般文字 prompt。
+- **Fallback**：格式不符合時，不會觸發 Agent mention 流程，而會按照一般 prompt 處理。
+
+### 使用範例
+
+```sh
+ask-bridge --provider chatgpt \
+  '@研究助手 請摘要這份規格並列出風險。' \
+  --file docs/spec.md
+
+ask-bridge --provider chatgpt \
+  '@程式審查 請檢查這份程式碼的風險。' \
+  --file src/main.rs
+```
 
 ## 對話與瀏覽器控制
 
