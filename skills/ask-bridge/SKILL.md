@@ -338,7 +338,7 @@ ChatGPT 的 `--reasoning` 支援 `auto`、`instant`、`medium`、`high` 與對�
 
 ## ChatGPT Agent 提及語法
 
-使用 ChatGPT 時，prompt 可以採用 `@Agent名稱 prompt正文` 格式。符合格式時，`ask-bridge` 會先輸入 Agent mention、等待候選選單出現，再按 `Tab` 選取當下的第一個候選，最後輸入正文。此流程不會驗證候選是否與輸入的 Agent 名稱完全相符。
+使用 ChatGPT 時，prompt 可以採用 `@Agent名稱 prompt正文` 格式。符合格式時，`ask-bridge` 會先輸入 Agent mention、等待候選選單出現，再按 `Tab` 接受 UI 當下的預設選取項，最後輸入正文。此流程不會驗證候選是否與輸入的 Agent 名稱完全相符。
 
 ### 語法與限制
 
