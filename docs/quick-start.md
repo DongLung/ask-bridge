@@ -183,7 +183,7 @@ ask-bridge --provider claude "用幾句話介紹 Rust。" --model Sonnet
 
 推理值：
 
-- **ChatGPT**：`auto`、`instant`、`medium`、`high`，亦接受對應中文別名。
+- **ChatGPT**：`instant`、`medium`、`high`、`xhigh`，亦接受對應中文別名（新版推理滑桿已無「自動」）。
 - **Gemini**：`extended`，只能單獨使用或搭配 Pro 模型。
 - **Claude**：不支援 `--reasoning`，原有 `--model` 行為不變。
 

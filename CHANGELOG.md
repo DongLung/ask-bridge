@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### 🚀 新增 (Added)
+- ChatGPT `--reasoning` 新增 `xhigh`（極高），對應新版推理強度滑桿。
+- 送出前自動將 ChatGPT 撰寫器從「工作（Work）」切回「對話（Chat）」模式。
+
+### 🔧 修復 (Fixed)
+- 適配 ChatGPT 改版後的 DOM：新的 ProseMirror 撰寫器、回覆回合容器、`in_progress` 串流狀態與個人檔案選單。
+- 修正 ChatGPT 複製按鈕產生的程式碼區塊遺失換行與語言標記，改以 CodeMirror 編輯器內容修補。
+- 修正 ChatGPT `--model`／`--reasoning` 無法操作新版模型選單（推理滑桿與模型清單分頁）。
+- 修正 ChatGPT 登出時被導向 `/auth/login` 會卡在載入逾時，現在會正確提示重新登入。
+- 修正 `login` 沿用背景 Chrome 時視窗位於螢幕外而無法登入，現在會改以可見模式重新啟動。
+
 ---
 
 ## [0.2.5] - 2026-07-10

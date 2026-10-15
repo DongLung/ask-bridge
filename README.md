@@ -348,7 +348,7 @@ ask-bridge --provider claude "用幾句話介紹 Rust。" --model Sonnet
 
 參數規則：
 
-- **ChatGPT**：`--reasoning` 支援 `auto`、`instant`、`medium`、`high`，也接受 `智慧`、`即時`、`中`、`中等`、`高` 等對應別名。
+- **ChatGPT**：`--reasoning` 支援 `instant`、`medium`、`high`、`xhigh`，也接受 `即時`、`中`、`中等`、`高`、`極高` 等對應別名。新版 ChatGPT 的推理強度滑桿已移除「自動」，`auto` 只保留給仍提供該選項的介面。ask-bridge 一律使用 ChatGPT 的「對話（Chat）」模式；若撰寫器停在「工作（Work）」模式，會在送出前自動切回。
 - **Gemini**：`--reasoning extended` 選擇 Extended Thinking；可省略 `--model`，或搭配實際存在的 Pro 模型。
 - **Claude**：不支援 `--reasoning`；`--model` 的 Sonnet、Opus、Haiku 選擇流程維持不變。
 

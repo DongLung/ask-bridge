@@ -97,9 +97,18 @@
 
   function visibleElements(selector) {
     return Array.from(document.querySelectorAll(selector)).filter((element) => {
+      // ChatGPT keeps inactive picker views mounted but inert.
+      if (typeof element.closest === 'function' && element.closest('[inert], [aria-hidden="true"]')) {
+        return false;
+      }
       if (typeof element.getClientRects !== 'function') return true;
       return element.getClientRects().length > 0;
     });
+  }
+
+  function isChatGptPickerControl(element) {
+    return element.getAttribute('data-model-picker-view-toggle') !== null
+      || element.getAttribute('data-reasoning-slider') !== null;
   }
 
   function dispatchClick(element) {
@@ -138,7 +147,8 @@
 
   function findPicker(provider) {
     if (provider === 'chatgpt') {
-      return document.querySelector('button.__composer-pill');
+      return document.querySelector('button.__composer-pill')
+        || document.querySelector('button[data-codex-intelligence-trigger]');
     }
     if (provider === 'gemini') {
       return visibleElements('button').find((button) => (
@@ -151,6 +161,75 @@
     return undefined;
   }
 
+  function parseSliderStatusLabel(text) {
+    return String(text || '').split(/[，,。]/)[0].trim();
+  }
+
+  function readSliderLabel(slider) {
+    const ids = (slider.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    for (const id of ids) {
+      const status = document.getElementById(id);
+      if (status && status.getAttribute('role') === 'status') {
+        const label = parseSliderStatusLabel(status.textContent);
+        if (label) return label;
+      }
+    }
+    const thumb = slider.querySelector('[role="slider"]');
+    return thumb ? parseSliderStatusLabel(thumb.getAttribute('aria-valuetext')) : '';
+  }
+
+  function readSliderPosition(slider) {
+    const thumb = slider.querySelector('[role="slider"]');
+    const now = Number(thumb && thumb.getAttribute('aria-valuenow'));
+    const max = Number(thumb && thumb.getAttribute('aria-valuemax'));
+    return {
+      now: Number.isFinite(now) ? now : 0,
+      max: Number.isFinite(max) && max > 0 ? max : 10,
+    };
+  }
+
+  async function pressSliderKey(slider, key, sleep) {
+    if (typeof slider.focus === 'function') slider.focus();
+    slider.dispatchEvent(new KeyboardEvent('keydown', {
+      key,
+      code: key,
+      bubbles: true,
+      cancelable: true,
+    }));
+    await sleep(200);
+  }
+
+  // Walks a stepped slider from its first stop to the last, stopping at the
+  // stop whose label matches the target. Restores the original stop when no
+  // label matches so a failed request leaves the user's setting untouched.
+  async function selectSliderOption(slider, config) {
+    const { readLabel, readPosition, press } = slider;
+    const available = [];
+    const initialLabel = readLabel();
+    if (labelsMatch(initialLabel, config.targetAliases)) {
+      return { ok: true, selected: initialLabel, available: [initialLabel] };
+    }
+
+    const { now, max } = readPosition();
+    for (let step = 0; step < now; step += 1) await press('ArrowLeft');
+
+    for (let index = 0; index <= max; index += 1) {
+      const label = readLabel();
+      if (label && !available.includes(label)) available.push(label);
+      if (labelsMatch(label, config.targetAliases)) {
+        if (!labelsMatch(label, config.verificationAliases)) {
+          return { ok: false, error: `selection could not be verified for ${label}`, available };
+        }
+        return { ok: true, selected: label, available };
+      }
+      if (index < max) await press('ArrowRight');
+    }
+
+    const { now: last } = readPosition();
+    for (let step = last; step > now; step -= 1) await press('ArrowLeft');
+    return { ok: false, error: 'option not found', available };
+  }
+
   async function findProviderOption(config, menuSelector, available, sleep) {
     const visited = new Set();
     const maxDepth = config.provider === 'chatgpt' ? 6 : 1;
@@ -160,13 +239,17 @@
       const entries = elements.map(entryFromElement);
       entries.forEach((entry) => available.add(entry.primaryLabel));
       const leaves = entries.filter(
-        (entry) => entry.element.getAttribute('aria-haspopup') !== 'menu',
+        (entry) => entry.element.getAttribute('aria-haspopup') !== 'menu'
+          && !isChatGptPickerControl(entry.element),
       );
       const chosen = findMatchingEntry(leaves, config.targetAliases);
       if (chosen || config.provider !== 'chatgpt') return chosen;
 
+      // The redesigned ChatGPT picker shows the reasoning slider first and
+      // reveals model choices through a view toggle instead of a submenu.
       const triggers = entries.filter(
-        (entry) => entry.element.getAttribute('aria-haspopup') === 'menu',
+        (entry) => entry.element.getAttribute('aria-haspopup') === 'menu'
+          || entry.element.getAttribute('data-model-picker-view-toggle') !== null,
       );
       const trigger = triggers.find((entry) => {
         const key = `${normalizeLabel(entry.primaryLabel)}|${entry.element.getAttribute('aria-label') || ''}`;
@@ -214,6 +297,23 @@
 
     dispatchClick(picker);
     await sleep(800);
+
+    const slider = config.provider === 'chatgpt' && config.kind === 'reasoning'
+      ? visibleElements('[data-reasoning-slider]')[0]
+      : undefined;
+    if (slider) {
+      const result = await selectSliderOption({
+        readLabel: () => readSliderLabel(slider),
+        readPosition: () => readSliderPosition(slider),
+        press: (key) => pressSliderKey(slider, key, sleep),
+      }, config);
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        keyCode: 27,
+        bubbles: true,
+      }));
+      return result;
+    }
 
     const chosen = await findProviderOption(config, menuSelector, available, sleep);
 
@@ -279,7 +379,9 @@
     findMatchingEntry,
     normalizeLabel,
     parseMenuEntry,
+    parseSliderStatusLabel,
     selectProviderOption,
+    selectSliderOption,
     selectionVerified,
   };
 });

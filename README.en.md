@@ -349,7 +349,7 @@ ask-bridge --provider claude "Introduce Rust in a few sentences." --model Sonnet
 
 Argument rules:
 
-- **ChatGPT**: `--reasoning` accepts `auto`, `instant`, `medium`, and `high`, plus the corresponding aliases `智慧`, `即時`, `中`, `中等`, and `高`.
+- **ChatGPT**: `--reasoning` accepts `instant`, `medium`, `high`, and `xhigh`, plus the corresponding aliases `即時`, `中`, `中等`, `高`, and `極高`. The redesigned ChatGPT reasoning slider no longer offers Auto, so `auto` only works where that option still exists. ask-bridge always uses ChatGPT's Chat mode and switches the composer back from Work mode before sending.
 - **Gemini**: `--reasoning extended` selects Extended Thinking. Omit `--model` or combine it with an available Pro model.
 - **Claude**: `--reasoning` is unsupported. Existing Sonnet, Opus, and Haiku `--model` selection is unchanged.
 
