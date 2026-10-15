@@ -1,8 +1,10 @@
 name: Publish npm
 
+# Dispatched by the Release workflow after every release asset is uploaded, or
+# run manually. A `release: published` trigger is intentionally absent: releases
+# created with GITHUB_TOKEN never emit it, and manually created releases fire it
+# before the assets exist, which fails the prepublish asset check.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -19,18 +21,27 @@ jobs:
           node-version: 22
       - name: Install supported npm version
         run: npm install -g npm@11.18.0
-      - name: Align npm version with release tag
-        if: github.event_name == 'release'
+      - name: Verify package version matches release tag
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"
-          CURRENT_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$CURRENT_VERSION" != "$VERSION" ]; then
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::package.json version $PACKAGE_VERSION does not match tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+      - name: Check whether this version is already published
+        id: registry
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "ask-bridge@$VERSION" version >/dev/null 2>&1; then
+            echo "ask-bridge@$VERSION is already on npm; skipping publish."
+            echo "published=true" >> "$GITHUB_OUTPUT"
           else
-            echo "package.json already at v$VERSION; skip npm version update"
+            echo "published=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Publish
+        if: steps.registry.outputs.published != 'true'
         run: npm publish --provenance --access public
         env:
           ASK_CHATGPT_RELEASE_ASSET_RETRIES: 12

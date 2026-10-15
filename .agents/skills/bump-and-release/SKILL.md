@@ -184,6 +184,27 @@ git tag -a "$tag" "$release_commit" -m "Release $tag"
 git push origin "refs/tags/$tag"
 ```
 
+### 第六之一步：確認 npm trusted publishing 已發布
+推送 Tag 後，`release.yml` 會在所有平台檔案上傳完成後，由 `trigger-npm-publish` job 以 `workflow_dispatch` 觸發 `npm-publish.yml`（ref 為該 Tag）。`npm-publish.yml` 透過 npm trusted publishing（GitHub OIDC，不使用 `NPM_TOKEN`）發布並附帶 provenance。
+
+> [!NOTE]
+> 不要改回 `release: published` 觸發：以 `GITHUB_TOKEN` 建立的 Release 不會觸發其他 workflow，而手動建立的 Release 會在檔案上傳前觸發，導致 `prepublish-check` 失敗。npm 端 trusted publisher 綁定的 workflow 檔名是 `npm-publish.yml`，不可更名。
+
+```bash
+npm_run_id=""
+for _ in $(seq 1 60); do
+  npm_run_id="$(gh run list --repo "$repo" --workflow npm-publish.yml --event workflow_dispatch \
+    --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+  [ -n "$npm_run_id" ] && break
+  sleep 20
+done
+[ -n "$npm_run_id" ] || { echo "找不到 $tag 的 npm 發布 run。" >&2; exit 1; }
+gh run watch "$npm_run_id" --repo "$repo" --exit-status --interval 15
+npm view "ask-bridge@${tag#v}" version
+```
+
+若 npm 發布失敗，修正後可手動重跑：`gh workflow run npm-publish.yml --repo "$repo" --ref "$tag"`；已發布的版本會自動略過，不會重複發布。
+
 ### 第七步：更新 GitHub Release 繁體中文發行說明
 GitHub Release 建立完成後，必須立即補上繁體中文（zh-tw）發行說明。不要只保留 GitHub 自動產生的 `Full Changelog` 連結。
 

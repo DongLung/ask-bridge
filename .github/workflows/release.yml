@@ -106,3 +106,19 @@ jobs:
           else
             gh release create "$TAG" artifacts/* --verify-tag --generate-notes
           fi
+
+  # Releases created with GITHUB_TOKEN do not emit `release` events to other
+  # workflows, so explicitly start the npm trusted-publishing workflow once all
+  # release assets exist. workflow_dispatch is allowed from GITHUB_TOKEN.
+  trigger-npm-publish:
+    needs: publish-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch npm publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh workflow run npm-publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
