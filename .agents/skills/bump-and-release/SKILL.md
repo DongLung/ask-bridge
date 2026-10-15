@@ -1,294 +1,113 @@
 ---
 name: bump-and-release
-description: 負責升級專案版本（patch、minor 或 major），更新所有設定檔與原始碼中的版本號，並協調發布流程、Git 提交、遠端 CI 成功閘門、Tag 推送與 GitHub Release 繁體中文發行說明更新。
+description: 發版 ask-bridge：自行判斷版本號，提交未完成的變更，同步所有版本檔與 CHANGELOG，推送並通過 CI，打 tag，發布 GitHub Release（含繁中發行說明）與 npm。使用者說「發版」、「release」、「bump version」或指定 patch／minor／major 時使用。
 ---
 
-# `bump-and-release` 技能說明
+# 發版
 
-本技能旨在指導 AI 代理人如何為 `ask-bridge` 專案執行正確的版本號提升（Version Bumping）、發布（Release）準備工作，以及 GitHub Release 建立後的繁體中文發行說明維護。
+使用者說「發版」，就代表授權整個流程：提交、推送、打 tag、發布 GitHub Release 與 npm。全程由你決定版本號與每個步驟，**一路做到完成**。向使用者回報的時機只有兩個：發版完成，以及閘門失敗且你無法自行修正。
 
-## 🎯 適用場景
-當使用者要求：
-- 「Bump version / Bump patch version / Bump minor version」
-- 「升級版本號 / 釋出新版本 / 準備 Release」
-- 「Bump and release」
+**完成條件**：GitHub Release 有 8 個平台檔案和繁中發行說明，npm 的 `latest` 等於新版本，且已向使用者回報第 7 步的摘要。
 
-請務必啟用並遵守本技能所述之標準作業程序，確保所有平台的設定與安裝腳本中的版本資訊保持一致。
+## 步驟
 
----
+### 1. 收尾工作目錄
 
-## 📋 待更新之檔案清單
+1. 確認在 `main`，並執行 `git pull --ff-only origin main`。
+2. 若有未提交的變更：先執行 `cargo fmt --all`、`cargo test`、`npm test`，通過後依 `AGENTS.md` 的 Git 規範提交（Conventional Commits、完整繁中說明，一個主題一個 commit）。
+3. 找出上一版：`git describe --tags --abbrev=0`。若 `<上一版>..HEAD` 沒有任何 commit，告訴使用者「沒有可發布的變更」並停止。
 
-版本號必須在下列檔案中同步更新：
+### 2. 決定版本號
 
-| 檔案路徑 | 欄位或變數格式 | 說明 |
-| :--- | :--- | :--- |
-| **`Cargo.toml`** | `version = "X.Y.Z"` | Rust 專案定義檔。 |
-| **`package.json`** | `"version": "X.Y.Z",` | NPM 套件定義檔。 |
-| **`src/main.rs`** | `#[command(version = "X.Y.Z")]` | CLI 命令列工具的內建版本顯示（Clap 屬性）。 |
-| **`install.ps1`** | `$Version = "X.Y.Z"` | Windows PowerShell 安裝腳本中的下載版本。 |
-| **`install.sh`** | `VERSION="X.Y.Z"` | Linux/macOS Shell 安裝腳本中的下載版本。 |
-| **`scripts/ask.sh`** | `VERSION="X.Y.Z"` | 專案輔助腳本的版本號。 |
+使用者有指定版本或 patch／minor／major 時照用。否則依 `git log <上一版>..HEAD` 的 Conventional Commits 判斷：
 
-> [!IMPORTANT]
-> 以上 6 個檔案的版本號必須完全一致。更新後，**必須執行編譯驗證**以自動更新 **`Cargo.lock`**。
+| 條件 | 升級 |
+| :--- | :--- |
+| 有破壞性變更（`type!:` 或 `BREAKING CHANGE`） | major；目前是 `0.x` 時改為 minor |
+| 有 `feat` | minor |
+| 其他（`fix`、`docs`、`ci`、`chore`…） | patch |
 
----
+### 3. 更新版本檔與 CHANGELOG
 
-## 🔄 標準作業程序 (SOP)
-
-### 第一步：分析升級類型
-1. **Patch 升級** (`X.Y.Z` 變為 `X.Y.(Z+1)`)：適用於 Bug 修正、極小功能微調。
-2. **Minor 升級** (`X.Y.Z` 變為 `X.(Y+1).0`)：適用於新增功能（向下相容）。
-3. **Major 升級** (`X.Y.Z` 變為 `(X+1).0.0`)：適用於有重大破壞性變更（Breaking Changes）的更新。
-
-### 第二步：修改版本號
-使用適當的程式碼編輯工具，將上述 **6 個檔案** 的舊版本號替換為新版本號。
-
-### 第三步：執行驗證與更新 Lockfile
-修改完設定檔後，必須執行 Rust 的程式檢查，這會自動同步更新 `Cargo.lock`：
-```powershell
-cargo check
-```
-（可選擇執行 `cargo build --release` 確保 release 版本能正常建置）
-
-若要驗證 npm 的相關測試，可於專案目錄執行：
-```powershell
-npm test
-```
-
-### 第四步：Git 提交並推送主分支
-遵照專案的 Git 規範，在提交時應將所有版本號相關的修改合併為一個單一提交，並採用 **Conventional Commits 1.0.0** 規範，日誌應提供完整的繁體中文（zh-tw）說明。
-
-此步驟只允許推送 `main`，不得建立或推送 Tag。推送前先記錄待發布 commit SHA，後續 CI 查詢、Tag 建立與一致性檢查都必須使用此不可變 SHA，不得改用等待期間可能變動的 `HEAD`。
-
-#### 執行範例：
 ```bash
-set -euo pipefail
+node .agents/skills/bump-and-release/set-version.mjs X.Y.Z
+```
 
-# 1. 提交所有版本相關變更，且確認目前位於 main
-[ "$(git branch --show-current)" = "main" ] || {
-  echo "目前不在 main；禁止發布。" >&2
-  exit 1
-}
+這支腳本會把版本寫進 6 個版本檔（`Cargo.toml`、`package.json`、`src/main.rs`、`install.ps1`、`install.sh`、`scripts/ask.sh`），再執行 `cargo check` 同步 `Cargo.lock`。版本檔清單以腳本為準；新增版本檔時要同時更新 `set-version.mjs` 與 `publish.mjs` 的檢查清單。
 
-git add .
+接著更新 `CHANGELOG.md`：把 `## [Unreleased]` 底下的內容移到新段落 `## [X.Y.Z] - YYYY-MM-DD`（今天日期），`[Unreleased]` 留空。若 `[Unreleased]` 原本就是空的，就依 `<上一版>..HEAD` 的 commit 撰寫條目。沿用既有分類標題，例如 `### 🚀 新增 (Added)`、`### 🔧 修復 (Fixed)`。
 
-commit_msg_file="$(mktemp -t codex-commit-message)"
-cat > "$commit_msg_file" <<'EOF'
+### 4. 提交版本
+
+```bash
+git add -A
+git commit -F <訊息檔>
+```
+
+訊息格式：
+
+```text
 chore(release): bump version to X.Y.Z
 
-此提交將專案各平台之版本與設定檔同步提升至 X.Y.Z：
+此提交將專案各平台之版本與設定檔同步提升至 X.Y.Z（<patch|minor|major>），對應<一句話說明本版重點>：
 
 - 更新 Cargo.toml 與 package.json 套件版本號。
 - 更新 src/main.rs 中 Clap 內建 CLI 版本資訊。
 - 同步更新 install.ps1、install.sh 與 scripts/ask.sh 腳本中的發布版本變數。
 - 自動同步更新 Cargo.lock。
-EOF
-
-git commit -F "$commit_msg_file"
-release_commit="$(git rev-parse HEAD)"
-git push origin main
+- 將 CHANGELOG.md 的 Unreleased 內容歸入 [X.Y.Z] - YYYY-MM-DD。
 ```
 
-### 第五步：等待並確認遠端 CI 成功
-本機驗證通過後，仍必須等待 GitHub Actions 的 `.github/workflows/ci.yml` 對同一個 release commit 完成。只有符合以下全部條件，才能進入 Tag 步驟：
-
-1. Workflow 必須是 `ci.yml`，事件必須是 `push`。
-2. `headSha` 必須等於第四步保存的 `release_commit`。
-3. `status` 必須是 `completed`，`conclusion` 必須是 `success`。
-4. CI 完成後，`origin/main` 仍必須精確指向 `release_commit`。
-
-#### CI 品質閘門範例：
-```bash
-repo="doggy8088/ask-bridge"
-
-# 先確認 main push 已更新到待發布 commit
-git fetch origin main --quiet
-if [ "$(git rev-parse refs/remotes/origin/main)" != "$release_commit" ]; then
-  echo "遠端 main 與待發布 commit 不一致；禁止建立或推送 Tag。" >&2
-  exit 1
-fi
-
-# GitHub Actions 建立 run 可能有短暫延遲；最多等待 5 分鐘讓 run 出現
-ci_run_id=""
-for _ in $(seq 1 30); do
-  ci_run_id="$(gh run list \
-    --repo "$repo" \
-    --workflow ci.yml \
-    --event push \
-    --commit "$release_commit" \
-    --limit 1 \
-    --json databaseId \
-    --jq '.[0].databaseId // empty')"
-  [ -n "$ci_run_id" ] && break
-  sleep 10
-done
-
-if [ -z "$ci_run_id" ]; then
-  echo "逾時仍找不到 commit $release_commit 的 main push CI；禁止建立或推送 Tag。" >&2
-  exit 1
-fi
-
-# failure、cancelled、timed_out 或其他非 success 結果都必須停止
-if ! gh run watch "$ci_run_id" --repo "$repo" --exit-status --interval 10; then
-  gh run view "$ci_run_id" --repo "$repo"
-  echo "CI run $ci_run_id 未成功；禁止建立或推送 Tag。" >&2
-  exit 1
-fi
-
-# watch 結束後再次驗證不可變後置條件，避免誤用其他 run
-ci_state="$(gh run view "$ci_run_id" \
-  --repo "$repo" \
-  --json headSha,event,status,conclusion \
-  --jq '[.headSha,.event,.status,.conclusion] | @tsv')"
-expected_ci_state="$(printf '%s\tpush\tcompleted\tsuccess' "$release_commit")"
-if [ "$ci_state" != "$expected_ci_state" ]; then
-  echo "CI 後置條件不符：$ci_state；禁止建立或推送 Tag。" >&2
-  exit 1
-fi
-
-# 等待期間 main 可能已前進；正式發布只允許目前 main 的最新 commit
-git fetch origin main --quiet
-if [ "$(git rev-parse refs/remotes/origin/main)" != "$release_commit" ]; then
-  echo "CI 完成後遠端 main 已變更；應以新的 main HEAD 重新執行發布流程。" >&2
-  exit 1
-fi
-```
-
-> [!CAUTION]
-> 找不到 CI run、等待逾時、`gh auth`／GitHub API／網路錯誤，或任何非 `success` 結果時，一律停止。不得以本機測試、PR CI、手動 workflow run 或舊 commit 的成功結果取代此閘門。修正問題若產生新 commit，必須更新 `release_commit`、重新推送並等待新 commit 的 CI。
-
-### 第六步：建立並推送 Tag
-CI 品質閘門成功後，才可建立對應的 **Git Tag**（格式為 `vX.Y.Z`）。Tag 必須明確指向已通過 CI 的 `release_commit`，不得依賴目前 `HEAD`，也不得覆寫或強制推送既有 Tag。
-
-#### 執行範例：
-```bash
-tag="vX.Y.Z"
-
-# 本機或遠端已有同名 Tag 時停止，先釐清既有 release 狀態
-if git show-ref --verify --quiet "refs/tags/$tag"; then
-  echo "本機 Tag $tag 已存在；禁止覆寫。" >&2
-  exit 1
-fi
-
-if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-  echo "遠端 Tag $tag 已存在；禁止覆寫。" >&2
-  exit 1
-fi
-
-# 建立帶有註解的 Tag，明確鎖定已通過 CI 的 commit
-git tag -a "$tag" "$release_commit" -m "Release $tag"
-
-# 推送 Tag 後會觸發 Release，Release 發布後再觸發 Publish npm
-git push origin "refs/tags/$tag"
-```
-
-### 第六之一步：確認 npm trusted publishing 已發布
-推送 Tag 後，`release.yml` 會在所有平台檔案上傳完成後，由 `trigger-npm-publish` job 以 `workflow_dispatch` 觸發 `npm-publish.yml`（ref 為該 Tag）。`npm-publish.yml` 透過 npm trusted publishing（GitHub OIDC，不使用 `NPM_TOKEN`）發布並附帶 provenance。
-
-> [!NOTE]
-> 不要改回 `release: published` 觸發：以 `GITHUB_TOKEN` 建立的 Release 不會觸發其他 workflow，而手動建立的 Release 會在檔案上傳前觸發，導致 `prepublish-check` 失敗。npm 端 trusted publisher 綁定的 workflow 檔名是 `npm-publish.yml`，不可更名。
+### 5. 發布
 
 ```bash
-npm_run_id=""
-for _ in $(seq 1 60); do
-  npm_run_id="$(gh run list --repo "$repo" --workflow npm-publish.yml --event workflow_dispatch \
-    --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
-  [ -n "$npm_run_id" ] && break
-  sleep 20
-done
-[ -n "$npm_run_id" ] || { echo "找不到 $tag 的 npm 發布 run。" >&2; exit 1; }
-gh run watch "$npm_run_id" --repo "$repo" --exit-status --interval 15
-npm view "ask-bridge@${tag#v}" version
+node .agents/skills/bump-and-release/publish.mjs X.Y.Z
 ```
 
-若 npm 發布失敗，修正後可手動重跑：`gh workflow run npm-publish.yml --repo "$repo" --ref "$tag"`；已發布的版本會自動略過，不會重複發布。
+腳本依序執行：發布前檢查（`main`、工作目錄乾淨、所有版本檔與 CHANGELOG 皆為 X.Y.Z）→ 本機 fmt／test／npm test → 推送 `main` → 等 `ci.yml` 對該 commit 成功 → 建立並推送 `vX.Y.Z` tag → 等 `release.yml` 建置並上傳 8 個檔案 → 等 `npm-publish.yml` 發布 → 確認 registry 已有新版本。全程約 10～15 分鐘；支援背景執行時，請放到背景並等它結束。
 
-### 第七步：更新 GitHub Release 繁體中文發行說明
-GitHub Release 建立完成後，必須立即補上繁體中文（zh-tw）發行說明。不要只保留 GitHub 自動產生的 `Full Changelog` 連結。
+腳本失敗時會印出原因並停止。處理方式依失敗點而定：
 
-#### 資料蒐集
-1. 使用 `gh release view vX.Y.Z --repo doggy8088/ask-bridge --json tagName,body,url,publishedAt` 確認 release 已建立。
-2. 使用 `git log --reverse --pretty=format:'%h%x09%ad%x09%s' --date=short <previous-tag>..vX.Y.Z` 查看此版本 commit。若是首版 release，前一個 tag 不存在，改用 `git log --reverse --pretty=format:'%h%x09%ad%x09%s' --date=short vX.Y.Z`。
-3. 使用 `git diff --stat <previous-tag>..vX.Y.Z` 與必要的 `git diff <previous-tag>..vX.Y.Z -- <path>` 確認實際影響範圍。若是首版 release，改用：
-   - `git diff --stat --root vX.Y.Z`
-   - `git diff --root vX.Y.Z -- <path>`
-4. 若 `CHANGELOG.md` 已有該版本內容，使用 `git show vX.Y.Z:CHANGELOG.md` 交叉比對，但仍需以 commit 與 diff 驗證，不可只改寫 changelog。
+- **tag 推送前**（本機驗證、CI）：修正問題，用新的 commit 提交，再以同一版本號重跑。
+- **tag 推送後**（Release、npm）：依腳本印出的 `gh run rerun …` 重跑該 workflow，或修正後直接重跑腳本；腳本偵測到遠端已有該 tag 時會從 Release 步驟續跑。已推送的 tag 保持不動；需要改程式碼才能修好時，改發下一個 patch 版。
 
-#### 發行說明格式
-發行說明必須使用 Markdown 與繁體中文（zh-tw），用詞保持台灣用語。建議包含以下區塊，並依實際變更刪減：
+發布鏈的原理：`release.yml` 上傳完檔案後，由 `trigger-npm-publish` job 以 `workflow_dispatch` 觸發 `npm-publish.yml`。這是因為以 `GITHUB_TOKEN` 建立的 Release 不會觸發 `release` 事件。npm 使用 trusted publishing（GitHub OIDC，不需 `NPM_TOKEN`），npm 端綁定的 workflow 檔名是 `npm-publish.yml`。
+
+### 6. 撰寫 GitHub Release 發行說明
+
+`release.yml` 只會產生一行 `Full Changelog`，必須換成繁中（台灣用語）發行說明。內容只寫經 commit、diff 或 CHANGELOG 驗證過的事實；不確定的部分要明說範圍。
+
+資料來源：
+
+```bash
+git log --reverse --pretty=format:'%h%x09%s' <上一版>..vX.Y.Z
+git diff --stat <上一版>..vX.Y.Z
+```
+
+格式（沒有內容的區塊就刪掉）：
 
 ```markdown
 ## 發行重點
 
-用 1 到 2 句說明此版本最重要的使用者可見變更。
+1～2 句說明使用者最有感的變更。
 
 ## 新增
 
-- 條列新增功能。
-
 ## 修正
-
-- 條列錯誤修正或相容性修正。
 
 ## 文件與網站
 
-- 條列文件、網站、README 或中繼資料更新。
-
 ## 測試
-
-- 條列新增或執行過的驗證。
 
 ## 注意事項
 
-- 條列安裝、相容性或遷移注意事項。
-
 ## 相關連結
 
-- 完整變更紀錄: https://github.com/doggy8088/ask-bridge/compare/<previous-tag>...vX.Y.Z
+- 完整變更紀錄: https://github.com/doggy8088/ask-bridge/compare/<上一版>...vX.Y.Z
 ```
 
-首版 release 的完整變更紀錄連結可使用：
+寫入暫存檔後執行 `gh release edit vX.Y.Z --repo doggy8088/ask-bridge --notes-file <檔案>`，再用 `gh release view` 確認內容。
 
-```markdown
-- 完整變更紀錄: https://github.com/doggy8088/ask-bridge/commits/vX.Y.Z
-```
+### 7. 回報
 
-#### 寫入 GitHub Release
-將發行說明寫入亂數暫存檔，確認 UTF-8 純文字後使用 `gh release edit` 更新：
-
-```bash
-release_notes_file="$(mktemp -t codex-release-notes)"
-cat > "$release_notes_file" <<'EOF'
-## 發行重點
-
-本版...
-
-## 相關連結
-
-- 完整變更紀錄: https://github.com/doggy8088/ask-bridge/compare/<previous-tag>...vX.Y.Z
-EOF
-
-gh release edit vX.Y.Z --repo doggy8088/ask-bridge --notes-file "$release_notes_file"
-gh release view vX.Y.Z --repo doggy8088/ask-bridge --json tagName,body,url
-```
-
-> [!IMPORTANT]
-> 發行說明必須描述已由 commit、diff、`CHANGELOG.md` 或 release asset 狀態驗證過的事實。若查無足夠資料，必須明確寫出不確定範圍，禁止臆測。
-
----
-
-## 💡 提示與訣竅
-
-> [!TIP]
-> 變更版本號前，建議先檢查舊版本號（例如 `0.1.2`）是否在其他檔案中出現：
-> - macOS / Linux：
->   - `rg -n "0\.1\.2" .`
->   - 若無 `rg`，改用：`grep -RIn "0.1.2" .`
-> - Windows PowerShell：
->   - `rg -n "0\.1\.2" .`
->   - 若無 `rg`，改用：`Get-ChildItem -Recurse -File | Select-String -Pattern "0.1.2" -SimpleMatch`
-
-> [!CAUTION]
-> 絕對不要只修改 `Cargo.toml` 而忽略了安裝腳本中的 `$Version`，這會導致使用者透過 `curl` 或 `iwr` 下載安裝時抓取到錯誤的版本。
+用繁體中文回報，內容包含：新版本號與升級類型（以及判斷理由）、本版重點、Release 網址、npm 網址，以及第 1 步替使用者提交的 commit（若有）。
