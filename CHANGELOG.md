@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-10-15
+
 ### 🚀 新增 (Added)
 - ChatGPT `--reasoning` 新增 `xhigh`（極高），對應新版推理強度滑桿。
 - 送出前自動將 ChatGPT 撰寫器從「工作（Work）」切回「對話（Chat）」模式。
