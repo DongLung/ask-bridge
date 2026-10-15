@@ -328,7 +328,7 @@ impl Provider {
     fn assistant_selector(self) -> &'static str {
         match self {
             Provider::ChatGpt => {
-                "[data-message-author-role=\"assistant\"], .agent-turn, [data-content-search-unit-key$=\":assistant\"]"
+                "[data-message-author-role=\"assistant\"], .agent-turn, [data-content-search-unit-key$=\":assistant\"], [data-chatgpt-search-message-ids]:has([data-testid=\"generated-image-gallery\"])"
             }
             Provider::Gemini => "model-response",
             Provider::Claude => ".font-claude-response",
@@ -338,7 +338,7 @@ impl Provider {
     fn latest_response_selector(self) -> &'static str {
         match self {
             Provider::ChatGpt => {
-                "[data-message-author-role=\"assistant\"], .agent-turn, [data-content-search-unit-key$=\":assistant\"], model-response, .model-response, [data-test-id*=\"response\"], [data-testid*=\"response\"]"
+                "[data-message-author-role=\"assistant\"], .agent-turn, [data-content-search-unit-key$=\":assistant\"], [data-chatgpt-search-message-ids]:has([data-testid=\"generated-image-gallery\"]), model-response, .model-response, [data-test-id*=\"response\"], [data-testid*=\"response\"]"
             }
             Provider::Gemini => "model-response",
             Provider::Claude => ".font-claude-response",
@@ -3840,6 +3840,10 @@ mod tests {
         ] {
             assert!(selector.contains(r#"[data-message-author-role="assistant"]"#));
             assert!(selector.contains(r#"[data-content-search-unit-key$=":assistant"]"#));
+            // Image-only replies have no assistant unit key, only the gallery.
+            assert!(selector.contains(
+                r#"[data-chatgpt-search-message-ids]:has([data-testid="generated-image-gallery"])"#
+            ));
         }
         assert_eq!(
             Provider::ChatGpt.response_content_selector(),
@@ -4782,7 +4786,7 @@ fn click_latest_copy_button(config_path: &str, provider: Provider) -> Result<(),
                 const isCopyButton = (el) => {
                     const label = labelOf(el);
                     return /copy|複製|复制|コピー|복사/i.test(label)
-                        && !/prompt|提示詞|提示词|入力|table|表格/i.test(label);
+                        && !/prompt|提示詞|提示词|入力|table|表格|image|圖像|图像|圖片|图片/i.test(label);
                 };
                 const copyButtonScore = (el) => {
                     const label = labelOf(el);
